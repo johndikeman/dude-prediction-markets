@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node src/index.js",
     "test": "node --test test/**/*.test.js",
-    "test:markets": "node --test test/markets.test.js"
+    "test:markets": "node --test test/markets.test.js",
+    "fetch": "node src/cli.js"
   },
   "dependencies": {
     "discord.js": "^14.25.1",
