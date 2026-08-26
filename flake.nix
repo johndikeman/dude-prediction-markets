@@ -98,7 +98,9 @@
                 default = null;
                 description = ''
                   Environment file with secrets (PM_WALLET_ADDRESS, PM_WALLET_PRIVATE_KEY,
-                  PM_TRADING_ENABLED, thresholds). Should be a root-readable path.
+                  PM_TRADING_ENABLED, thresholds). Must also contain
+                  OP_SERVICE_ACCOUNT_TOKEN — `op run --env-file .opvars` needs it to
+                  resolve the op:// references. Should be a user-readable path.
                 '';
               };
             };
@@ -116,6 +118,11 @@
                   ExecStartPre = [
                     "${pkgs.coreutils}/bin/mkdir -p ${cfg.stateDir}"
                     "${pkgs.coreutils}/bin/mkdir -p ${cfg.obsidianDir}"
+                  ] ++ lib.optionals (cfg.environmentFile != null) [
+                    # fail fast with a clear message if the op token is missing,
+                    # otherwise `op run` dies with a cryptic auth error every cycle
+                    ("${pkgs.bash}/bin/bash -c 'grep -q OP_SERVICE_ACCOUNT_TOKEN ${cfg.environmentFile} || "
+                      + "{ echo prediction-markets: environmentFile missing OP_SERVICE_ACCOUNT_TOKEN; exit 1; }'")
                   ];
                   ExecStart =
                     let
