@@ -36,7 +36,8 @@ export class MetaculusSource {
         params.append("search", search);
       }
 
-      const url = `${this.baseUrl}/questions?${params.toString()}`;
+      // trailing slash required — without it the api 301s and can drop auth
+      const url = `${this.baseUrl}/questions/?${params.toString()}`;
       const response = await fetch(url, {
         signal: AbortSignal.timeout(15000),
         headers: this.buildHeaders(),

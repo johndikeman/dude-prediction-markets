@@ -25,6 +25,9 @@
             src = ./.;
             dontNpmBuild = true;
             npmDepsHash = "sha256-ImVyp3kCC8WDeBRjziXEaqUvluypsXQwFmIIHWUrRj4=";
+            postInstall = ''
+              cp .opvars $out/.opvars
+            '';
           };
 
           devShells.default = pkgs.mkShell {
@@ -81,13 +84,21 @@
                 description = "Obsidian vault path for reports.";
               };
 
+              opvarsFile = lib.mkOption {
+                type = lib.types.path;
+                default = "${cfg.package}/.opvars";
+                description = ''
+                  Path to a 1Password .opvars file (op:// secret references).
+                  Resolved at runtime via `op run --env-file`.
+                '';
+              };
+
               environmentFile = lib.mkOption {
                 type = lib.types.nullOr lib.types.path;
                 default = null;
                 description = ''
                   Environment file with secrets (PM_WALLET_ADDRESS, PM_WALLET_PRIVATE_KEY,
-                  PM_TRADING_ENABLED, OPENROUTER_API_KEY, thresholds). Should be a
-                  1Password-injected file or root-readable path.
+                  PM_TRADING_ENABLED, thresholds). Should be a root-readable path.
                 '';
               };
             };
@@ -106,7 +117,11 @@
                     "${pkgs.coreutils}/bin/mkdir -p ${cfg.stateDir}"
                     "${pkgs.coreutils}/bin/mkdir -p ${cfg.obsidianDir}"
                   ];
-                  ExecStart = "${cfg.package}/bin/prediction-markets --once";
+                  ExecStart =
+                    let
+                      opRun = pkgs._1password-cli + "/bin/op run --env-file ${cfg.opvarsFile}";
+                    in
+                    "${opRun} -- ${cfg.package}/bin/prediction-markets --once";
                   Environment = [
                     "PM_STATE_DIR=${cfg.stateDir}"
                     "OBSIDIAN_DIR=${cfg.obsidianDir}"
