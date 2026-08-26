@@ -51,3 +51,40 @@ This agent specializes in:
 
 ## Obsidian Reports
 Each run cycle produces a new markdown report in `vault/reports/prediction-markets/` and appends a link to `betting market project.md`.
+
+## Autonomy / self-funding
+
+The agent runs as a fully autonomous experiment:
+
+- **wallet**: `src/wallet/portfolio.js` tracks a polygon/polymarket wallet
+  (`PM_WALLET_ADDRESS`) — portfolio value, positions, native balance, and
+  P&L history in `state/portfolio-history.json`.
+- **trading**: `src/wallet/trader.js` wraps `@polymarket/clob-client` for
+  order execution. hard-gated behind `PM_TRADING_ENABLED=true` +
+  `PM_WALLET_PRIVATE_KEY`. decisions are made by the agent following
+  `src/prompts/cycle-instructions.md`, not by brittle js logic.
+- **self-recharge**: `src/tools/openrouter.js` checks credit balance each
+  cycle; when below threshold, the agent converts wallet gains to credits.
+
+## Nix
+
+Everything required to deploy lives here:
+
+```
+nix build                 # build the package
+```
+
+Consume from another flake via:
+
+```nix
+inputs.dude-prediction-markets.url = "github:johndikeman/dude-prediction-markets";
+# ...
+imports = [ inputs.dude-prediction-markets.homeManagerModules.prediction-markets ];
+services.prediction-markets = {
+  enable = true;
+  environmentFile = ./secrets/pm.env; # wallet keys + OPENROUTER_API_KEY
+};
+```
+
+This creates namespaced `prediction-markets.service/.timer` units that do
+not collide with the main dude-agent services.

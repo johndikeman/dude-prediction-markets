@@ -12,8 +12,12 @@
     "fetch": "node src/cli.js"
   },
   "dependencies": {
+    "@polymarket/clob-client": "^5.8.1",
     "dotenv": "^16.6.1",
+    "ethers": "^6.17.0",
     "undici": "^7.24.6"
   },
-  "devDependencies": {}
+  "bin": {
+    "prediction-markets": "src/runner.js"
+  }
 }
