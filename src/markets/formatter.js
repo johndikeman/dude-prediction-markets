@@ -124,6 +124,14 @@ export class ContextFormatter {
       if (meta) line += `\n  ${meta}`;
     }
 
+    if (sourceName === "manifold") {
+      const prob = item.probability !== null && item.probability !== undefined
+        ? `prob: ${Math.round(item.probability * 100)}%` : "";
+      const vol = item.volume24h ? `$${this.formatNumber(item.volume24h)} 24h vol` : "";
+      const meta = [prob, vol].filter(Boolean).join(" | ");
+      if (meta) line += `\n  ${meta}`;
+    }
+
     if (url) line += `\n  <${url}>`;
 
     return line;

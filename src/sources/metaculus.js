@@ -10,6 +10,19 @@ export class MetaculusSource {
   constructor(options = {}) {
     this.name = "metaculus";
     this.baseUrl = options.baseUrl || "https://www.metaculus.com/api2";
+    this.apiKey = options.apiKey || null;
+  }
+
+  buildHeaders() {
+    // metaculus now requires authentication for all api access (403 otherwise)
+    const headers = {
+      "User-Agent": "dude-prediction-markets/0.1.0",
+      "Accept": "application/json",
+    };
+    if (this.apiKey) {
+      headers["Authorization"] = `Token ${this.apiKey}`;
+    }
+    return headers;
   }
 
   async fetchQuestions(limit = 20, status = "open", search = "") {
@@ -25,10 +38,8 @@ export class MetaculusSource {
 
       const url = `${this.baseUrl}/questions?${params.toString()}`;
       const response = await fetch(url, {
-        headers: {
-          "User-Agent": "dude-prediction-markets/0.1.0",
-          "Accept": "application/json",
-        },
+        signal: AbortSignal.timeout(15000),
+        headers: this.buildHeaders(),
       });
 
       if (!response.ok) {

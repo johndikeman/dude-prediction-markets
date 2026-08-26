@@ -7,6 +7,7 @@ import { GdeltSource } from "../sources/gdelt.js";
 import { GoogleNewsRssSource } from "../sources/google-news-rss.js";
 import { PolymarketSource } from "../sources/polymarket.js";
 import { MetaculusSource } from "../sources/metaculus.js";
+import { ManifoldSource } from "../sources/manifold.js";
 import { RedditSource } from "../sources/reddit.js";
 
 export class DataSourcer {
@@ -17,6 +18,7 @@ export class DataSourcer {
       "google-news-rss",
       "polymarket",
       "metaculus",
+      "manifold",
       "reddit",
     ];
     this.initializeSources(options);
@@ -33,7 +35,13 @@ export class DataSourcer {
       this.sources.set("polymarket", new PolymarketSource(options.polymarket));
     }
     if (this.enabledSources.includes("metaculus")) {
-      this.sources.set("metaculus", new MetaculusSource(options.metaculus));
+      this.sources.set("metaculus", new MetaculusSource({
+        ...options.metaculus,
+        apiKey: process.env.METACULUS_API_KEY,
+      }));
+    }
+    if (this.enabledSources.includes("manifold")) {
+      this.sources.set("manifold", new ManifoldSource(options.manifold));
     }
     if (this.enabledSources.includes("reddit")) {
       this.sources.set("reddit", new RedditSource(options.reddit));
@@ -83,6 +91,12 @@ export class DataSourcer {
     if (this.sources.has("metaculus")) {
       const meta = this.sources.get("metaculus");
       results.push(await meta.fetchQuestions(limit, "open", search));
+    }
+
+    // Manifold active markets
+    if (this.sources.has("manifold")) {
+      const manifold = this.sources.get("manifold");
+      results.push(await manifold.fetchMarkets(limit));
     }
 
     return results;
