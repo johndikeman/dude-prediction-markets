@@ -20,6 +20,7 @@ export class GdeltSource {
       // GDELT's knowledge graph endpoint with query
       const url = `${this.baseUrl}/gkg_geojson?query=${encodeURIComponent(query)}&format=json&limit=${limit}`;
       const response = await fetch(url, {
+        signal: AbortSignal.timeout(15000),
         headers: {
           "User-Agent": "dude-prediction-markets/0.1.0",
         },

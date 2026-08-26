@@ -13,6 +13,8 @@ import { DataSourcer } from "./markets/data-sourcer.js";
 import { ContextFormatter } from "./markets/formatter.js";
 import { StrategyEngine } from "./strategies/engine.js";
 import { ObsidianReporter } from "./reports/obsidian.js";
+import { Portfolio } from "./wallet/portfolio.js";
+import { getCredits, shouldRecharge, affordableRecharge } from "./tools/openrouter.js";
 
 const STATE_DIR = process.env.PM_STATE_DIR || "./state";
 const VAULT_DIR = process.env.OBSIDIAN_DIR || "/home/ubuntu/vault";
@@ -82,12 +84,39 @@ async function runCycle(engine, reporter) {
   // backtest summaries
   const backtests = strategies.map((s) => engine.backtestSummary(s.id));
 
+  // wallet / autonomy status
+  const portfolio = new Portfolio({ stateDir: STATE_DIR });
+  let wallet = null;
+  let openrouter = null;
+  try {
+    const snap = await portfolio.snapshot();
+    await portfolio.recordSnapshot(snap);
+    const pnl = await portfolio.getPnl();
+    wallet = { ...snap, pnl };
+  } catch (err) {
+    wallet = { error: err.message };
+  }
+
+  try {
+    const credits = await getCredits();
+    const recharge = shouldRecharge(credits);
+    openrouter = {
+      ...credits,
+      rechargeNeeded: recharge.needed,
+      affordableRechargeUsd: affordableRecharge(wallet?.valueUsd),
+    };
+  } catch (err) {
+    openrouter = { error: err.message };
+  }
+
   const reportData = {
     timestamp,
     strategies: engine.list(),
     snapshots,
     maintenanceActions,
     backtests,
+    wallet,
+    openrouter,
   };
 
   const reportPath = await reporter.writeReport(reportData);

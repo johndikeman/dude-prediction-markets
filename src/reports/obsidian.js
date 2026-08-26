@@ -24,7 +24,7 @@ export class ObsidianReporter {
   /**
    * Generate a markdown report string from run data.
    */
-  generateMarkdown({ timestamp, strategies, snapshots, maintenanceActions }) {
+  generateMarkdown({ timestamp, strategies, snapshots, maintenanceActions, wallet, openrouter }) {
     const lines = [];
     lines.push(`# prediction market strategy report`);
     lines.push(`**generated:** ${timestamp}`);
@@ -64,6 +64,44 @@ export class ObsidianReporter {
         }
       }
     }
+    lines.push("");
+
+    lines.push(`## wallet`);
+    if (!wallet) {
+      lines.push("_wallet tracking unavailable._");
+    } else if (wallet.error || !wallet.address) {
+      lines.push(`- error: ${wallet.error || "PM_WALLET_ADDRESS not configured"}`);
+    } else {
+      lines.push(`- address: \`${wallet.address}\``);
+      lines.push(`- portfolio value: $${wallet.valueUsd ?? "?"}`);
+      lines.push(`- native balance: ${wallet.nativeBalance ?? "?"} POL`);
+      lines.push(`- open positions: ${wallet.positionCount ?? "?"}`);
+      if (wallet.pnl?.changeUsd != null) {
+        lines.push(
+          `- pnl since first snapshot: $${wallet.pnl.changeUsd} (${wallet.pnl.changePct}%)`
+        );
+      }
+      for (const e of wallet.errors ?? []) lines.push(`- warning: ${e}`);
+    }
+    lines.push("");
+
+    lines.push(`## openrouter credits`);
+    if (!openrouter || openrouter.error) {
+      lines.push(`- error: ${openrouter?.error || "unknown"}`);
+    } else {
+      lines.push(`- remaining: $${openrouter.remaining.toFixed(2)}`);
+      lines.push(`- total credits: $${openrouter.totalCredits.toFixed(2)}`);
+      lines.push(`- recharge needed: ${openrouter.rechargeNeeded ? "yes" : "no"}`);
+      lines.push(
+        `- affordable recharge now: $${openrouter.affordableRechargeUsd.toFixed(2)} (portfolio value minus trading reserve)`
+      );
+    }
+    lines.push("");
+
+    lines.push(`## agent directives`);
+    lines.push(
+      "follow `src/prompts/cycle-instructions.md` in the dude-prediction-markets repo when acting on this report."
+    );
     lines.push("");
 
     lines.push(`## notes`);

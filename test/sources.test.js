@@ -5,6 +5,7 @@ import { GoogleNewsRssSource } from "../src/sources/google-news-rss.js";
 import { PolymarketSource } from "../src/sources/polymarket.js";
 import { MetaculusSource } from "../src/sources/metaculus.js";
 import { RedditSource } from "../src/sources/reddit.js";
+import { ManifoldSource } from "../src/sources/manifold.js";
 
 test("GdeltSource normalize handles empty data", () => {
   const source = new GdeltSource();
@@ -178,4 +179,57 @@ test("RedditSource normalizePosts handles empty children", () => {
   const source = new RedditSource();
   const result = source.normalizePosts({ data: { children: [] } }, "news");
   assert.strictEqual(result.items.length, 0);
+});
+
+test("ManifoldSource normalize filters resolved and extracts fields", () => {
+  const source = new ManifoldSource();
+  const data = [
+    {
+      id: "abc",
+      question: "Will X happen by 2027?",
+      url: "https://manifold.markets/me/will-x",
+      probability: 0.234,
+      volume24Hours: 1500.5,
+      volume: 90000,
+      closeTime: Date.parse("2027-01-01"),
+      isResolved: false,
+      outcomeType: "BINARY",
+      creatorUsername: "me",
+      slug: "will-x",
+    },
+    {
+      id: "resolved",
+      question: "Already done",
+      isResolved: true,
+      outcomeType: "BINARY",
+    },
+    {
+      id: "bounty",
+      question: "Bounty thing",
+      outcomeType: "BOUNTIES",
+    },
+  ];
+
+  const result = source.normalize(data);
+  assert.strictEqual(result.source, "manifold");
+  assert.strictEqual(result.items.length, 1);
+  assert.strictEqual(result.items[0].title, "Will X happen by 2027?");
+  assert.strictEqual(result.items[0].probability, 0.23);
+  assert.strictEqual(result.items[0].volume24h, 1500.5);
+  assert.ok(result.items[0].closeDate.includes("2027"));
+});
+
+test("ManifoldSource normalize handles non-array data", () => {
+  const source = new ManifoldSource();
+  const result = source.normalize(null);
+  assert.deepStrictEqual(result.items, []);
+});
+
+test("MetaculusSource builds auth headers when api key present", () => {
+  const withKey = new MetaculusSource({ apiKey: "test-token" });
+  const headers = withKey.buildHeaders();
+  assert.strictEqual(headers.Authorization, "Token test-token");
+
+  const withoutKey = new MetaculusSource();
+  assert.ok(!withoutKey.buildHeaders().Authorization);
 });
