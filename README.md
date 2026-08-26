@@ -82,8 +82,16 @@ inputs.dude-prediction-markets.url = "github:johndikeman/dude-prediction-markets
 imports = [ inputs.dude-prediction-markets.homeManagerModules.prediction-markets ];
 services.prediction-markets = {
   enable = true;
-  environmentFile = ./secrets/pm.env; # wallet keys + OPENROUTER_API_KEY
+  environmentFile = ./secrets/pm.env;
 };
+```
+
+**important:** `pm.env` (or whatever `environmentFile` points at) must contain
+`OP_SERVICE_ACCOUNT_TOKEN=<token>` in addition to any wallet/api secrets. the
+service runs everything through `op run --env-file .opvars`, which resolves the
+`op://` secret refs — and `op` itself can only authenticate via that token.
+it cannot be baked into `.opvars` as an `op://` ref (chicken-and-egg). see
+`~/.config/dude/.env` on the vps for the current token.
 ```
 
 This creates namespaced `prediction-markets.service/.timer` units that do
