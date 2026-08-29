@@ -13,28 +13,45 @@ export class GdeltSource {
   constructor(options = {}) {
     this.name = "gdelt";
     this.baseUrl = options.baseUrl || "https://api.gdeltproject.org/api/v1";
+    this.timeoutMs = options.timeoutMs ?? 15000;
+    this.maxAttempts = options.maxAttempts ?? 3;
+    this.retryDelayMs = options.retryDelayMs ?? 1000;
+    this.fetchFn = options.fetchFn ?? fetch;
   }
 
   async fetchRecentEvents(query = "", limit = 50) {
-    try {
-      // GDELT's knowledge graph endpoint with query
-      const url = `${this.baseUrl}/gkg_geojson?query=${encodeURIComponent(query)}&format=json&limit=${limit}`;
-      const response = await fetch(url, {
-        signal: AbortSignal.timeout(15000),
-        headers: {
-          "User-Agent": "dude-prediction-markets/0.1.0",
-        },
-      });
+    const url = `${this.baseUrl}/gkg_geojson?query=${encodeURIComponent(query)}&format=json&limit=${limit}`;
+    const maxAttempts = this.maxAttempts;
+    let lastErr = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await this.fetchFn(url, {
+          signal: AbortSignal.timeout(this.timeoutMs),
+          headers: {
+            "User-Agent": "dude-prediction-markets/0.1.0",
+          },
+        });
 
-      if (!response.ok) {
-        throw new Error(`GDELT HTTP ${response.status}`);
+        if (!response.ok) {
+          throw new Error(`GDELT HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        return this.normalize(data);
+      } catch (err) {
+        lastErr = err;
+        // only retry on transient-looking failures (network/timeout/5xx)
+        const statusMatch = /GDELT HTTP (\d+)/.exec(err.message);
+        const status = statusMatch ? Number(statusMatch[1]) : null;
+        const transient = !status || status >= 500;
+        if (attempt < maxAttempts && transient) {
+          await new Promise((r) => setTimeout(r, this.retryDelayMs * attempt));
+          continue;
+        }
+        return { source: this.name, error: err.message, items: [] };
       }
-
-      const data = await response.json();
-      return this.normalize(data);
-    } catch (err) {
-      return { source: this.name, error: err.message, items: [] };
     }
+    return { source: this.name, error: lastErr?.message || "unknown", items: [] };
   }
 
   normalize(data) {
