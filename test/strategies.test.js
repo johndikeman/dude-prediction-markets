@@ -128,3 +128,68 @@ test("StrategyEngine backtestSummary returns statistics", async () => {
     assert.strictEqual(summary.avgMarketsPerRun, 1);
   });
 });
+
+test("StrategyEngine prunes persistently failing sources", async () => {
+  await withTmpDir(async (dir) => {
+    const engine = new StrategyEngine(dir);
+    await engine.init();
+
+    const strategy = engine.get("politics-elections");
+    assert.ok(strategy.newsSources.includes("gdelt"));
+
+    // seed 3 runs where gdelt errors every time (matches runner.js signal format)
+    for (let i = 0; i < 3; i++) {
+      const data = {
+        query: strategy.query,
+        timestamp: new Date().toISOString(),
+        news: [{ source: "google-news-rss", items: [{ title: "a" }] }],
+        markets: [{ source: "polymarket", items: [{ title: "m" }] }],
+      };
+      await engine.recordSnapshot(strategy.id, data, [
+        { type: "error", message: "gdelt: fetch failed" },
+      ]);
+    }
+
+    const suggestions = engine.evaluateMaintenance("politics-elections");
+    const review = suggestions.find((s) => s.type === "review_sources");
+    assert.ok(review, "should suggest review_sources");
+    assert.deepStrictEqual(review.metadata.failingSources, ["gdelt"]);
+
+    const applied = engine.applySuggestions("politics-elections", suggestions);
+    assert.ok(applied, "should apply the prune");
+
+    const updated = engine.get("politics-elections");
+    assert.ok(!updated.newsSources.includes("gdelt"), "gdelt pruned from news sources");
+    assert.ok(updated.newsSources.includes("google-news-rss"));
+    assert.ok(updated.marketSources.includes("polymarket"), "healthy market sources untouched");
+    assert.strictEqual(updated.prunedSources.length, 1);
+    assert.ok(updated.prunedSources[0].prunedAt);
+  });
+});
+
+test("failingSources ignores errors without a source prefix", async () => {
+  await withTmpDir(async (dir) => {
+    const engine = new StrategyEngine(dir);
+    await engine.init();
+    const failing = engine.failingSources([
+      { signals: [{ type: "error", message: "gdelt: HTTP 503" }] },
+      { signals: [{ type: "error", message: "whole pipeline blew up" }] },
+      { signals: [{ type: "error", message: "metaculus: 403" }] },
+    ]);
+    assert.deepStrictEqual(failing.sort(), ["gdelt", "metaculus"]);
+  });
+});
+
+test("applySuggestions leaves sources alone when metadata is missing", async () => {
+  await withTmpDir(async (dir) => {
+    const engine = new StrategyEngine(dir);
+    await engine.init();
+    const strategy = engine.get("politics-elections");
+    const before = [...strategy.newsSources];
+    const applied = engine.applySuggestions("politics-elections", [
+      { type: "review_sources", reason: "errors", suggestion: "x" },
+    ]);
+    assert.ok(!applied);
+    assert.deepStrictEqual(engine.get("politics-elections").newsSources, before);
+  });
+});

@@ -156,19 +156,37 @@ export class StrategyEngine {
         });
       }
 
-      const errors = recentRuns.filter(
-        (r) => r.signals.some((sig) => sig.type === "error")
-      ).length;
-      if (errors >= 2) {
+      const errorRuns = recentRuns.filter((r) =>
+        r.signals.some((sig) => sig.type === "error")
+      );
+      if (errorRuns.length >= 2) {
         suggestions.push({
           type: "review_sources",
-          reason: `${errors} of last 5 runs had source errors`,
+          reason: `${errorRuns.length} of last 5 runs had source errors`,
           suggestion: "disable failing sources or check rate limits",
+          metadata: { failingSources: this.failingSources(errorRuns) },
         });
       }
     }
 
     return suggestions;
+  }
+
+  /**
+   * Extract the source names behind error signals.
+   * Error signals use the `${source}: ${error}` message format (see runner.js);
+   * non-source errors (e.g. a whole-pipeline failure) don't match and are skipped.
+   */
+  failingSources(errorRuns) {
+    const failing = new Set();
+    for (const run of errorRuns) {
+      for (const sig of run.signals || []) {
+        if (sig.type !== "error") continue;
+        const m = /^([a-z0-9_-]+): /.exec(sig.message || "");
+        if (m) failing.add(m[1]);
+      }
+    }
+    return [...failing];
   }
 
   applySuggestions(strategyId, suggestions) {
@@ -177,17 +195,30 @@ export class StrategyEngine {
 
     let changed = false;
     for (const sug of suggestions) {
-      if (sug.type === "review_sources" && Array.isArray(s.newsSources)) {
-        // prune sources that have been erroring
-        const failing = (sug.metadata?.failingSources || []).filter((src) =>
-          s.newsSources.includes(src)
-        );
-        if (failing.length) {
+      if (sug.type !== "review_sources") continue;
+      // prune sources that have been erroring, from both news and market lists
+      const failing = (sug.metadata?.failingSources || []).filter(
+        (src) =>
+          s.newsSources?.includes(src) || s.marketSources?.includes(src)
+      );
+      if (failing.length) {
+        if (Array.isArray(s.newsSources)) {
           s.newsSources = s.newsSources.filter(
             (src) => !failing.includes(src)
           );
-          changed = true;
         }
+        if (Array.isArray(s.marketSources)) {
+          s.marketSources = s.marketSources.filter(
+            (src) => !failing.includes(src)
+          );
+        }
+        s.prunedSources = s.prunedSources || [];
+        s.prunedSources.push({
+          sources: failing,
+          reason: sug.reason,
+          prunedAt: new Date().toISOString(),
+        });
+        changed = true;
       }
     }
     return changed;
