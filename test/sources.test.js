@@ -233,3 +233,42 @@ test("MetaculusSource builds auth headers when api key present", () => {
   const withoutKey = new MetaculusSource();
   assert.ok(!withoutKey.buildHeaders().Authorization);
 });
+
+test("GdeltSource retries transient failures then returns error", async () => {
+  const { GdeltSource } = await import("../src/sources/gdelt.js");
+  let calls = 0;
+  const src = new GdeltSource({ maxAttempts: 3, retryDelayMs: 1, fetchFn: async () => { calls++; throw new Error("Connect Timeout Error"); } });
+  {
+    const result = await src.fetchRecentEvents("election");
+    assert.strictEqual(calls, 3);
+    assert.ok(result.error.includes("Connect Timeout"));
+    assert.deepStrictEqual(result.items, []);
+  }
+});
+
+test("GdeltSource does not retry on 4xx", async () => {
+  const { GdeltSource } = await import("../src/sources/gdelt.js");
+  let calls = 0;
+  const src = new GdeltSource({ maxAttempts: 3, retryDelayMs: 1, fetchFn: async () => { calls++; return { ok: false, status: 400, json: async () => ({}) }; } });
+  {
+    const result = await src.fetchRecentEvents("election");
+    assert.strictEqual(calls, 1);
+    assert.ok(result.error.includes("GDELT HTTP 400"));
+  }
+});
+
+test("GdeltSource succeeds after transient failure", async () => {
+  const { GdeltSource } = await import("../src/sources/gdelt.js");
+  let calls = 0;
+  const src = new GdeltSource({ maxAttempts: 3, retryDelayMs: 1, fetchFn: async () => {
+    calls++;
+    if (calls === 1) throw new Error("fetch failed");
+    return { ok: true, json: async () => ({ features: [{ properties: { name: "Test Event", date: "20260829000000" } }] }) };
+  } });
+  {
+    const result = await src.fetchRecentEvents("election");
+    assert.strictEqual(calls, 2);
+    assert.strictEqual(result.items.length, 1);
+    assert.strictEqual(result.items[0].title, "Test Event");
+  }
+});
