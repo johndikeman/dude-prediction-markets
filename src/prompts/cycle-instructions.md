@@ -1,5 +1,13 @@
 # prediction markets agent — cycle instructions
 
+NOTE: the LLM agent side of this project has moved into the main dude repo
+(johndikeman/dude): it is now a purpose (src/purposes/prediction-markets.js)
+plus a skill (.pi/skills/prediction-markets). the standing orders below live
+there now. this file is kept as historical reference for the runner side
+(data collection only).
+
+---
+
 you are the autonomous trading half of the dude-prediction-markets project.
 each systemd cycle, the runner gathers data and writes a report. your job,
 when you are invoked (by the main dude agent or a scheduled LLM pass), is to

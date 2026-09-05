@@ -3,7 +3,6 @@
  * and formats the output for agent consumption.
  */
 
-import { GdeltSource } from "../sources/gdelt.js";
 import { GoogleNewsRssSource } from "../sources/google-news-rss.js";
 import { PolymarketSource } from "../sources/polymarket.js";
 import { MetaculusSource } from "../sources/metaculus.js";
@@ -22,7 +21,6 @@ export class DataSourcer {
     this.failureThreshold = options.failureThreshold ?? FAILURE_THRESHOLD;
     this.cooldownMs = options.cooldownMs ?? COOLDOWN_MS;
     this.enabledSources = options.enabledSources || [
-      "gdelt",
       "google-news-rss",
       "polymarket",
       "metaculus",
@@ -33,9 +31,6 @@ export class DataSourcer {
   }
 
   initializeSources(options) {
-    if (this.enabledSources.includes("gdelt")) {
-      this.sources.set("gdelt", new GdeltSource(options.gdelt));
-    }
     if (this.enabledSources.includes("google-news-rss")) {
       this.sources.set("google-news-rss", new GoogleNewsRssSource(options.googleNews));
     }
@@ -102,14 +97,6 @@ export class DataSourcer {
       const gn = this.sources.get("google-news-rss");
       results.push(await this.guardedFetch("google-news-rss", () =>
         gn.fetchByQuery(query, limit)
-      ));
-    }
-
-    // GDELT for global events matching query
-    if (this.sources.has("gdelt")) {
-      const gdelt = this.sources.get("gdelt");
-      results.push(await this.guardedFetch("gdelt", () =>
-        gdelt.fetchRecentEvents(query, limit)
       ));
     }
 
