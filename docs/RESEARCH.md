@@ -3,21 +3,13 @@
 ## News Sources for Prediction Market Context
 
 ### Free / No API Key Required
-1. **GDELT Project** (https://gdeltproject.org/)
-   - Global Database of Events, Language, and Tone
-   - Completely free, no API key required
-   - Provides CSV/JSON dumps and real-time feeds
-   - Excellent for political and geopolitical event tracking
-   - Good coverage of breaking news that moves markets
-
-2. **Google News RSS Feeds**
+1. **Google News RSS Feeds**
    - Free RSS feeds for any search query
    - No API key needed
    - Good for keyword-based monitoring of specific events
    - Rate limited but generous for moderate usage
 
-3. **Hacker News API** (https://github.com/HackerNews/API)
-   - Free, no authentication required
+2. **Hacker News API** (https://github.com/HackerNews/API)
    - Good for tech-related prediction markets
    - JSON API for stories, comments, and users
 

@@ -1,49 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { GdeltSource } from "../src/sources/gdelt.js";
 import { GoogleNewsRssSource } from "../src/sources/google-news-rss.js";
 import { PolymarketSource } from "../src/sources/polymarket.js";
 import { MetaculusSource } from "../src/sources/metaculus.js";
 import { RedditSource } from "../src/sources/reddit.js";
 import { ManifoldSource } from "../src/sources/manifold.js";
-
-test("GdeltSource normalize handles empty data", () => {
-  const source = new GdeltSource();
-  const result = source.normalize({ features: [] });
-  assert.strictEqual(result.source, "gdelt");
-  assert.deepStrictEqual(result.items, []);
-});
-
-test("GdeltSource normalize extracts features", () => {
-  const source = new GdeltSource();
-  const data = {
-    features: [
-      {
-        properties: {
-          name: "Election Update",
-          url: "https://example.com/news",
-          tone: "positive",
-          date: "20260824203000",
-          themes: "ELECTION;POLITICS",
-          locations: "USA;WASHINGTON",
-        },
-      },
-    ],
-  };
-
-  const result = source.normalize(data);
-  assert.strictEqual(result.items.length, 1);
-  assert.strictEqual(result.items[0].title, "Election Update");
-  assert.strictEqual(result.items[0].url, "https://example.com/news");
-  assert.deepStrictEqual(result.items[0].topics, ["ELECTION", "POLITICS"]);
-});
-
-test("GdeltSource parseGdeltDate handles various formats", () => {
-  const source = new GdeltSource();
-  assert.ok(source.parseGdeltDate("20260824203000").includes("2026-08-24"));
-  assert.ok(source.parseGdeltDate("20260824").includes("2026-08-24"));
-  assert.ok(source.parseGdeltDate("bad").includes(new Date().getFullYear()));
-});
 
 test("GoogleNewsRssSource parseRss extracts items", () => {
   const source = new GoogleNewsRssSource();
@@ -232,43 +193,4 @@ test("MetaculusSource builds auth headers when api key present", () => {
 
   const withoutKey = new MetaculusSource();
   assert.ok(!withoutKey.buildHeaders().Authorization);
-});
-
-test("GdeltSource retries transient failures then returns error", async () => {
-  const { GdeltSource } = await import("../src/sources/gdelt.js");
-  let calls = 0;
-  const src = new GdeltSource({ maxAttempts: 3, retryDelayMs: 1, fetchFn: async () => { calls++; throw new Error("Connect Timeout Error"); } });
-  {
-    const result = await src.fetchRecentEvents("election");
-    assert.strictEqual(calls, 3);
-    assert.ok(result.error.includes("Connect Timeout"));
-    assert.deepStrictEqual(result.items, []);
-  }
-});
-
-test("GdeltSource does not retry on 4xx", async () => {
-  const { GdeltSource } = await import("../src/sources/gdelt.js");
-  let calls = 0;
-  const src = new GdeltSource({ maxAttempts: 3, retryDelayMs: 1, fetchFn: async () => { calls++; return { ok: false, status: 400, json: async () => ({}) }; } });
-  {
-    const result = await src.fetchRecentEvents("election");
-    assert.strictEqual(calls, 1);
-    assert.ok(result.error.includes("GDELT HTTP 400"));
-  }
-});
-
-test("GdeltSource succeeds after transient failure", async () => {
-  const { GdeltSource } = await import("../src/sources/gdelt.js");
-  let calls = 0;
-  const src = new GdeltSource({ maxAttempts: 3, retryDelayMs: 1, fetchFn: async () => {
-    calls++;
-    if (calls === 1) throw new Error("fetch failed");
-    return { ok: true, json: async () => ({ features: [{ properties: { name: "Test Event", date: "20260829000000" } }] }) };
-  } });
-  {
-    const result = await src.fetchRecentEvents("election");
-    assert.strictEqual(calls, 2);
-    assert.strictEqual(result.items.length, 1);
-    assert.strictEqual(result.items[0].title, "Test Event");
-  }
 });

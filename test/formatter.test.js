@@ -68,12 +68,12 @@ test("formatter handles source errors", () => {
   const data = {
     query: "tech",
     timestamp: "2026-08-24T22:00:00Z",
-    news: [{ source: "gdelt", error: "timeout", items: [] }],
+    news: [{ source: "news-src", error: "timeout", items: [] }],
     markets: [{ source: "polymarket", error: "rate limited", items: [] }],
   };
 
   const output = formatter.format(data);
-  assert.ok(output.includes("gdelt: ⚠️ error"));
+  assert.ok(output.includes("news-src: ⚠️ error"));
   assert.ok(output.includes("polymarket: ⚠️ error"));
 });
 
