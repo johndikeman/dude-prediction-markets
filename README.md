@@ -55,8 +55,11 @@ Each run cycle produces a new markdown report in `vault/reports/prediction-marke
 Each strategy run appends a JSON line to `$PM_STATE_DIR/snapshots.jsonl`.
 Besides counts and signals, the line carries trimmed raw items — news
 (`title`/`url`/`source`/`publishedAt`) and markets (`title`/`url`/
-`probability`/`closeDate`/volumes) — so paper signals and backtests can be
-reconstructed from history. The slim in-memory copy in
+`probability`/`probabilityMarket`/`closeDate`/volumes) — so paper signals and
+backtests can be reconstructed from history. Polymarket items carry the
+yes/first outcome price of the highest-volume market in the event as
+`probability`; metaculus items mirror `communityPrediction` into
+`probability`. The slim in-memory copy in
 `strategies.json` (`results`, last 50) stays count-only. Set
 `PM_SNAPSHOT_RAW_ITEMS=false` to disable raw-item capture.
 

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { GoogleNewsRssSource } from "../src/sources/google-news-rss.js";
-import { PolymarketSource } from "../src/sources/polymarket.js";
+import { PolymarketSource, extractOutcomes } from "../src/sources/polymarket.js";
 import { MetaculusSource } from "../src/sources/metaculus.js";
 import { RedditSource } from "../src/sources/reddit.js";
 import { ManifoldSource } from "../src/sources/manifold.js";
@@ -48,7 +48,7 @@ test("PolymarketSource normalizeMarkets handles array", () => {
       liquidity: 10000,
       endDate: "2026-09-01T00:00:00Z",
       markets: [
-        { question: "Yes", outcomePrices: { Yes: 0.7 }, volume: 50000, liquidity: 10000 },
+        { question: "Will it rain?", outcomes: "[\"Yes\", \"No\"]", outcomePrices: "[\"0.7\", \"0.3\"]", volumeNum: 50000, liquidityNum: 10000 },
       ],
     },
   ];
@@ -58,7 +58,59 @@ test("PolymarketSource normalizeMarkets handles array", () => {
   assert.strictEqual(result.items.length, 1);
   assert.strictEqual(result.items[0].title, "Will it rain?");
   assert.strictEqual(result.items[0].volume, 50000);
+  assert.strictEqual(result.items[0].outcomes[0].name, "Yes");
   assert.strictEqual(result.items[0].outcomes[0].probability, 0.7);
+  // top-level probability = yes price of the highest-volume market
+  assert.strictEqual(result.items[0].probability, 0.7);
+  assert.strictEqual(result.items[0].probabilityMarket, "Will it rain?");
+  assert.strictEqual(result.items[0].closeDate, "2026-09-01T00:00:00Z");
+  assert.strictEqual(result.items[0].totalVolume, 50000);
+});
+
+test("PolymarketSource extractOutcomes parses stringified gamma fields", () => {
+  assert.deepStrictEqual(
+    extractOutcomes({ outcomes: "[\"Up\", \"Down\"]", outcomePrices: "[\"0.25\", \"0.75\"]" }),
+    [
+      { name: "Up", probability: 0.25 },
+      { name: "Down", probability: 0.75 },
+    ]
+  );
+  // object form (legacy) still works
+  assert.deepStrictEqual(
+    extractOutcomes({ outcomes: { a: "Yes" }, outcomePrices: { a: 0.4 } }),
+    [{ name: "Yes", probability: 0.4 }]
+  );
+  // garbage strings -> no outcomes, no crash
+  assert.deepStrictEqual(extractOutcomes({ outcomes: "not json", outcomePrices: "also not" }), []);
+  assert.deepStrictEqual(extractOutcomes({}), []);
+  // non-numeric prices are skipped
+  assert.deepStrictEqual(
+    extractOutcomes({ outcomes: "[\"A\", \"B\"]", outcomePrices: "[\"bad\", \"0.9\"]" }),
+    [{ name: "B", probability: 0.9 }]
+  );
+});
+
+test("PolymarketSource multi-market event uses highest-volume market for probability", () => {
+  const source = new PolymarketSource();
+  const data = [
+    {
+      id: "evt-2",
+      title: "Big Event",
+      slug: "big-event",
+      volume: "999",
+      volume24hr: "123",
+      markets: [
+        { question: "minor", outcomes: "[\"Yes\", \"No\"]", outcomePrices: "[\"0.1\", \"0.9\"]", volumeNum: 100 },
+        { question: "major", outcomes: "[\"Yes\", \"No\"]", outcomePrices: "[\"0.8\", \"0.2\"]", volumeNum: 900 },
+      ],
+    },
+  ];
+  const item = source.normalizeMarkets(data).items[0];
+  assert.strictEqual(item.probability, 0.8);
+  assert.strictEqual(item.probabilityMarket, "major");
+  assert.strictEqual(item.totalVolume, 1000);
+  assert.strictEqual(item.volume24h, 123);
+  assert.strictEqual(item.outcomes.length, 4);
 });
 
 test("PolymarketSource normalizeMarket returns null for null input", () => {
