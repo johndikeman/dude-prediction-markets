@@ -100,12 +100,18 @@ export class StrategyEngine {
 
   /**
    * Record a snapshot for a strategy after a data run.
+   *
+   * The slim snapshot (counts + signals) is kept in memory / strategies.json;
+   * the line appended to snapshots.jsonl also carries trimmed raw news and
+   * market items (title, url, prices, etc.) so paper signals and backtests
+   * can be computed from history. Raw items can be disabled by setting
+   * PM_SNAPSHOT_RAW_ITEMS=false.
    */
   async recordSnapshot(strategyId, dataBundle, signals) {
     const s = this.get(strategyId);
     if (!s) return;
 
-    const snapshot = {
+    const slim = {
       strategyId,
       timestamp: new Date().toISOString(),
       query: dataBundle.query,
@@ -120,17 +126,61 @@ export class StrategyEngine {
       signals: signals || [],
     };
 
-    s.lastRun = snapshot.timestamp;
+    const lineObj = { ...slim };
+    if (process.env.PM_SNAPSHOT_RAW_ITEMS !== "false") {
+      Object.assign(lineObj, this.trimRawItems(dataBundle));
+    }
+
+    s.lastRun = slim.timestamp;
     s.runs += 1;
-    s.results.push(snapshot);
+    s.results.push(slim);
 
     // Keep last 50 results in memory; full history goes to jsonl.
     if (s.results.length > 50) {
       s.results = s.results.slice(-50);
     }
 
-    const line = JSON.stringify(snapshot) + "\n";
+    const line = JSON.stringify(lineObj) + "\n";
     await writeFile(this.historyFile, line, { flag: "a" });
+  }
+
+  /**
+   * Trim raw items from a data bundle down to compact, history-friendly
+   * objects (drop long descriptions/summaries, cap item counts).
+   */
+  trimRawItems(dataBundle) {
+    const pick = (obj, keys) => {
+      const out = {};
+      for (const k of keys) {
+        if (obj[k] !== undefined && obj[k] !== null && obj[k] !== "") {
+          out[k] = obj[k];
+        }
+      }
+      return out;
+    };
+
+    const newsKeys = ["title", "url", "source", "publishedAt"];
+    const marketKeys = [
+      "id",
+      "title",
+      "url",
+      "probability",
+      "closeDate",
+      "category",
+      "status",
+      "source",
+      "volume24h",
+      "totalVolume",
+    ];
+
+    return {
+      newsItems: dataBundle.news.flatMap((r) =>
+        (r.items || []).slice(0, 15).map((i) => pick(i, newsKeys))
+      ),
+      marketItems: dataBundle.markets.flatMap((r) =>
+        (r.items || []).slice(0, 30).map((i) => pick(i, marketKeys))
+      ),
+    };
   }
 
   /**
