@@ -46,11 +46,19 @@ This agent specializes in:
 | Polymarket | Markets | None |
 | Metaculus | Forecasts | None |
 | Google News RSS | News | None |
-| GDELT | Events | None |
 | Reddit | Sentiment | None (rate limited) |
 
 ## Obsidian Reports
 Each run cycle produces a new markdown report in `vault/reports/prediction-markets/` and appends a link to `betting market project.md`.
+
+## Snapshots
+Each strategy run appends a JSON line to `$PM_STATE_DIR/snapshots.jsonl`.
+Besides counts and signals, the line carries trimmed raw items — news
+(`title`/`url`/`source`/`publishedAt`) and markets (`title`/`url`/
+`probability`/`closeDate`/volumes) — so paper signals and backtests can be
+reconstructed from history. The slim in-memory copy in
+`strategies.json` (`results`, last 50) stays count-only. Set
+`PM_SNAPSHOT_RAW_ITEMS=false` to disable raw-item capture.
 
 ## Autonomy / self-funding
 
