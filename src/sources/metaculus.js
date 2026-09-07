@@ -73,6 +73,9 @@ export class MetaculusSource {
         status: q.status || "",
         resolutionDate: q.resolution_date || q.scheduled_close_date || null,
         communityPrediction: communityPrediction !== null ? Math.round(communityPrediction * 100) / 100 : null,
+        // mirror communityPrediction into probability so the snapshot trim
+        // (engine.trimRawItems) and any probability-based consumers get a price
+        probability: communityPrediction !== null ? Math.round(communityPrediction * 100) / 100 : null,
         numForecasters: q.number_of_forecasters || 0,
         source: this.name,
         updatedAt: new Date().toISOString(),
