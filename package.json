@@ -1,6 +1,6 @@
 {
   "name": "dude-prediction-markets",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "AI agent for prediction market strategy research, backtesting, and tracking",
   "type": "module",
   "main": "src/runner.js",

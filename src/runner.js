@@ -12,6 +12,7 @@
 import { DataSourcer } from "./markets/data-sourcer.js";
 import { ContextFormatter } from "./markets/formatter.js";
 import { StrategyEngine } from "./strategies/engine.js";
+import { computePaperSignals } from "./signals/engine.js";
 import { ObsidianReporter } from "./reports/obsidian.js";
 import { Portfolio } from "./wallet/portfolio.js";
 import { getCredits, shouldRecharge, affordableRecharge } from "./tools/openrouter.js";
@@ -47,6 +48,15 @@ async function runCycle(engine, reporter) {
       };
     }
 
+    // paper signals: probability movement vs the previous snapshot.
+    // must be computed before recordSnapshot appends the new line.
+    const prevSnapshot = await engine.lastSnapshotFor(strategy.id);
+    const currentMarketItems = data.markets.flatMap((r) => r.items || []);
+    const paperSignals = computePaperSignals(
+      currentMarketItems,
+      prevSnapshot?.marketItems || [],
+    );
+
     // Identify failing sources
     const allResults = [...data.news, ...data.markets];
     for (const r of allResults) {
@@ -57,6 +67,7 @@ async function runCycle(engine, reporter) {
         });
       }
     }
+    signals.push(...paperSignals);
 
     await engine.recordSnapshot(strategy.id, data, signals);
     snapshots.push({

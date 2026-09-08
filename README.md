@@ -63,6 +63,19 @@ yes/first outcome price of the highest-volume market in the event as
 `strategies.json` (`results`, last 50) stays count-only. Set
 `PM_SNAPSHOT_RAW_ITEMS=false` to disable raw-item capture.
 
+## Market relevance + paper signals
+
+- **Per-strategy relevance**: the runner passes each strategy's query into
+  the market fetch. Metaculus gets server-side `search`; polymarket and
+  manifold are fetched with a larger pool then filtered locally by token
+  overlap with the query (`relevanceScore`, threshold `0.25`). If no items
+  match, the unfiltered top feed is kept so a strategy never goes blind.
+- **Paper signals**: after each fetch, the runner compares market items to
+  the previous snapshot for that strategy (`lastSnapshotFor`). Markets whose
+  `probability` moved at least `PM_SIGNAL_MIN_DELTA` (default `0.05`) emit a
+  `price-movement` paper signal, persisted in the snapshot's `signals` array
+  — that's the raw material for the 20-cycle backtest gate.
+
 ## Autonomy / self-funding
 
 The agent runs as a fully autonomous experiment:

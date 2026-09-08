@@ -21,7 +21,7 @@
         {
           packages.default = pkgs.buildNpmPackage.override { nodejs = pkgs.nodejs_24; } {
             pname = "dude-prediction-markets";
-            version = "0.5.0";
+            version = "0.6.0";
             src = ./.;
             dontNpmBuild = true;
             npmDepsHash = "sha256-ImVyp3kCC8WDeBRjziXEaqUvluypsXQwFmIIHWUrRj4=";
