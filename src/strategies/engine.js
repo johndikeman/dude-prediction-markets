@@ -145,6 +145,31 @@ export class StrategyEngine {
   }
 
   /**
+   * Return the most recent snapshot line for a strategy from
+   * snapshots.jsonl (slim record + trimmed raw items), or null.
+   */
+  async lastSnapshotFor(strategyId) {
+    let raw;
+    try {
+      raw = await readFile(this.historyFile, "utf-8");
+    } catch (err) {
+      if (err.code === "ENOENT") return null;
+      throw err;
+    }
+    const lines = raw.split("\n").reverse();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const obj = JSON.parse(line);
+        if (obj.strategyId === strategyId) return obj;
+      } catch {
+        // skip malformed/truncated tail line
+      }
+    }
+    return null;
+  }
+
+  /**
    * Trim raw items from a data bundle down to compact, history-friendly
    * objects (drop long descriptions/summaries, cap item counts).
    */
