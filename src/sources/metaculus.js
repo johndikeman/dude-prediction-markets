@@ -1,7 +1,8 @@
 /**
  * Metaculus data source
- * Fetches forecasting questions from Metaculus public API
- * No API key required for read access
+ * Fetches forecasting questions from Metaculus api2 — which is now a shim
+ * over the newer /api/posts/ response shape (see issue #16). API token
+ * required for all read access (403 otherwise).
  */
 
 import { fetch } from "undici";
@@ -54,6 +55,40 @@ export class MetaculusSource {
     }
   }
 
+  /**
+   * Extract the community aggregate probability from a normalized question.
+   * Handles both response shapes:
+   * - legacy api2: q.community_prediction.full.q1 (a 0..1 probability)
+   * - new api (api2 is now a shim over /api/posts/): nested q.question with
+   *   question.aggregations.<method>.latest — binary centers[0]/means[0] are
+   *   0..1 probabilities; numeric/continuous values are on the question's own
+   *   scale, so only binary contributes a probability.
+   * Returns null when no usable aggregate exists (metaculus currently returns
+   * null aggregates sitewide — see johndikeman/dude-prediction-markets#16).
+   */
+  extractCommunityPrediction(q) {
+    // legacy shape
+    if (q.community_prediction?.full) {
+      const v = q.community_prediction.full.q1;
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      return null;
+    }
+    // new shape
+    const inner = q.question;
+    if (!inner || inner.type !== "binary") return null;
+    const aggs = inner.aggregations || {};
+    const method = inner.default_aggregation_method || "recency_weighted";
+    const latest = aggs[method]?.latest || aggs.recency_weighted?.latest;
+    if (!latest) return null;
+    const candidates = [latest.centers, latest.means];
+    for (const arr of candidates) {
+      if (Array.isArray(arr) && typeof arr[0] === "number" && Number.isFinite(arr[0])) {
+        return arr[0];
+      }
+    }
+    return null;
+  }
+
   normalize(data) {
     const items = [];
     if (!data || !Array.isArray(data.results)) {
@@ -61,22 +96,36 @@ export class MetaculusSource {
     }
 
     for (const q of data.results.slice(0, 50)) {
-      const communityPrediction = q.community_prediction?.full ?
-        q.community_prediction.full.q1 : null;
+      // new /api/posts/ shape wraps the question; notebooks have no question
+      // object and no community_prediction key — skip them entirely. legacy
+      // api2 results always carried a community_prediction key (even when null)
+      // and are kept.
+      if (q.community_prediction === undefined && !q.question) continue;
+
+      const inner = q.question || {};
+      const raw = this.extractCommunityPrediction(q);
+      const communityPrediction = raw !== null ? Math.round(raw * 100) / 100 : null;
 
       items.push({
-        id: q.id || "",
-        title: q.title || "Unknown Question",
-        url: q.page_url || `https://www.metaculus.com/questions/${q.id}/`,
-        description: q.description || "",
-        category: q.type || "",
-        status: q.status || "",
-        resolutionDate: q.resolution_date || q.scheduled_close_date || null,
-        communityPrediction: communityPrediction !== null ? Math.round(communityPrediction * 100) / 100 : null,
+        id: (q.question?.id ?? q.id) || "",
+        title: q.title || inner.title || "Unknown Question",
+        url:
+          q.page_url ||
+          `https://www.metaculus.com/questions/${q.question?.id ?? q.id}/`,
+        description: inner.description || q.description || "",
+        category: inner.type || q.type || "",
+        status: inner.status || q.status || "",
+        resolutionDate:
+          q.resolution_date ||
+          inner.scheduled_resolve_time ||
+          q.scheduled_resolve_time ||
+          q.scheduled_close_date ||
+          null,
+        communityPrediction,
         // mirror communityPrediction into probability so the snapshot trim
         // (engine.trimRawItems) and any probability-based consumers get a price
-        probability: communityPrediction !== null ? Math.round(communityPrediction * 100) / 100 : null,
-        numForecasters: q.number_of_forecasters || 0,
+        probability: communityPrediction,
+        numForecasters: q.number_of_forecasters || q.nr_forecasters || 0,
         source: this.name,
         updatedAt: new Date().toISOString(),
       });
