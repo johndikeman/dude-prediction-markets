@@ -38,10 +38,11 @@ export function relevanceScore(query, text) {
 /**
  * Filter market items by relevance to a strategy query.
  * Items scoring >= minScore are kept, ordered by (score desc, original order).
- * If nothing passes, the original items are returned unchanged (better to
- * have some market data than none — noted in snapshots via counts).
+ * If nothing passes the threshold, keep the top `fallbackCount` items by score
+ * (still relevance-ordered) instead of the untouched feed — an all-or-nothing
+ * fallback hands every hard-query strategy the identical generic top feed.
  */
-export function filterItemsByRelevance(items, query, minScore = 0.25) {
+export function filterItemsByRelevance(items, query, minScore = 0.25, fallbackCount = 15) {
   if (!Array.isArray(items) || items.length === 0) return items || [];
   const scored = items
     .map((item, i) => ({
@@ -50,8 +51,9 @@ export function filterItemsByRelevance(items, query, minScore = 0.25) {
       i,
     }))
     .sort((a, b) => b.score - a.score || a.i - b.i);
-  const passing = scored.filter((s) => s.score >= minScore).map((s) => s.item);
-  return passing.length > 0 ? passing : items;
+  const passing = scored.filter((s) => s.score >= minScore);
+  const chosen = passing.length > 0 ? passing : scored.slice(0, fallbackCount);
+  return chosen.map((s) => s.item);
 }
 
 export class DataSourcer {

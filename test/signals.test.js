@@ -35,10 +35,29 @@ test("filterItemsByRelevance keeps passing items, drops noise", () => {
   assert.ok(out.length < items.length);
 });
 
-test("filterItemsByRelevance: falls back to unfiltered items when nothing matches", () => {
-  const items = [{ title: "LoL Worlds winner" }, { title: "SMU vs FSU" }];
-  const out = filterItemsByRelevance(items, "quantum computing breakthroughs", 0.34);
-  assert.strictEqual(out, items);
+test("filterItemsByRelevance: keeps top-N scored items when nothing passes", () => {
+  // nothing matches "quantum" at all -> top fallbackCount items by score (original order here)
+  const items = [
+    { title: "LoL Worlds winner" },
+    { title: "Quantum computing roadmap" },
+    { title: "SMU vs FSU" },
+  ];
+  const out = filterItemsByRelevance(items, "quantum computing breakthroughs", 0.9);
+  assert.notStrictEqual(out, items);
+  assert.strictEqual(out.length, 3);
+  assert.strictEqual(out[0].title, "Quantum computing roadmap");
+});
+
+test("filterItemsByRelevance: fallback caps at fallbackCount and preserves score order", () => {
+  const items = Array.from({ length: 20 }, (_, i) => ({
+    title: i === 7 ? "Quantum computing roadmap 2030" : `Sports match ${i}`,
+  }));
+  const out = filterItemsByRelevance(items, "quantum computing", 0.34, 5);
+  // note: query tokens both appear in item 7 -> score 1.0 passes 0.34, so this
+  // goes through the passing path; craft a zero-pass case instead:
+  const out2 = filterItemsByRelevance(items, "quantum computing breakthroughs", 0.9, 5);
+  assert.strictEqual(out2.length, 5);
+  assert.strictEqual(out2[0].title, "Quantum computing roadmap 2030");
 });
 
 test("filterItemsByRelevance: handles empty input", () => {
