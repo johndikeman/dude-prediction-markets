@@ -135,6 +135,31 @@ test("computePaperSignals: down movement direction", () => {
   assert.strictEqual(signals[0].delta, -0.2);
 });
 
+test("computePaperSignals: skips when probabilityMarket flips inside a group (neg-risk)", () => {
+  // fed decision: cut-25 yes was the highest-volume sub-market last cycle,
+  // hike-25 yes is top now. 0.0045 -> 0.545 is sub-market rotation, not a price move.
+  const signals = computePaperSignals(
+    [mkItem("fed", 0.545, { probabilityMarket: "Will the Fed increase interest rates by 25 bps after the September 2026 meeting?" })],
+    [mkItem("fed", 0.0045, { probabilityMarket: "Will the Fed decrease interest rates by 25 bps after the September 2026 meeting?" })]
+  );
+  assert.deepStrictEqual(signals, []);
+});
+
+test("computePaperSignals: real movement under a stable probabilityMarket still emits", () => {
+  const pm = "Will there be no change in Fed interest rates after the September 2026 meeting?";
+  const signals = computePaperSignals(
+    [mkItem("fed", 0.52, { probabilityMarket: pm })],
+    [mkItem("fed", 0.42, { probabilityMarket: pm })]
+  );
+  assert.strictEqual(signals.length, 1);
+  assert.strictEqual(signals[0].delta, 0.1);
+});
+
+test("computePaperSignals: items without probabilityMarket behave as before", () => {
+  const signals = computePaperSignals([mkItem("m", 0.72)], [mkItem("m", 0.6)]);
+  assert.strictEqual(signals.length, 1);
+});
+
 test("computePaperSignals: skips items without numeric probabilities", () => {
   const signals = computePaperSignals(
     [mkItem("a", null), mkItem("b", 0.9)],

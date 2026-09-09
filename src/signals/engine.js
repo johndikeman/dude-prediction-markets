@@ -31,6 +31,16 @@ export function computePaperSignals(marketItems, prevItems, options = {}) {
     const prev = prevById.get(item.id);
     if (!prev) continue; // new market this cycle, no baseline yet
 
+    // neg-risk groups (e.g. "Fed Decision in September?"): the recorded
+    // probability is the Yes of whichever sub-market was highest-volume
+    // this cycle. when probabilityMarket flips between snapshots the delta
+    // compares two different sub-markets — skip instead of emitting a fake
+    // "price-movement". items without probabilityMarket (metaculus, etc.)
+    // behave exactly as before.
+    const pm = item.probabilityMarket;
+    const prevPm = prev.probabilityMarket;
+    if (pm !== undefined && prevPm !== undefined && pm !== prevPm) continue;
+
     const rawTo = item.probability;
     const rawFrom = prev.probability;
     if (rawTo == null || rawFrom == null) continue;
