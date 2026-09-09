@@ -156,7 +156,103 @@ test("MetaculusSource normalize handles missing community_prediction", () => {
   };
 
   const result = source.normalize(data);
-  assert.strictEqual(result.items[0].communityPrediction, null);
+  assert.strictEqual(result.items.length, 0); // no question object -> skipped
+});
+
+test("MetaculusSource normalize parses new api shape with binary aggregate", () => {
+  const source = new MetaculusSource();
+  const data = {
+    results: [
+      {
+        id: 45500,
+        title: "Fed decision in September?",
+        slug: "fed-sept",
+        status: "open",
+        nr_forecasters: 153,
+        forecasts_count: 177,
+        question: {
+          id: 45700,
+          type: "binary",
+          status: "open",
+          description: "Will the Fed cut?",
+          default_aggregation_method: "recency_weighted",
+          scheduled_resolve_time: "2026-09-17T18:00:00Z",
+          aggregations: {
+            recency_weighted: {
+              history: null,
+              latest: { centers: [0.427], means: [0.43], forecaster_count: 153 },
+              score_data: null,
+              movement: null,
+            },
+          },
+        },
+      },
+    ],
+  };
+
+  const result = source.normalize(data);
+  assert.strictEqual(result.items.length, 1);
+  const item = result.items[0];
+  assert.strictEqual(item.id, 45700);
+  assert.strictEqual(item.title, "Fed decision in September?");
+  assert.strictEqual(item.url, "https://www.metaculus.com/questions/45700/");
+  assert.strictEqual(item.probability, 0.43);
+  assert.strictEqual(item.communityPrediction, 0.43);
+  assert.strictEqual(item.numForecasters, 153);
+  assert.strictEqual(item.resolutionDate, "2026-09-17T18:00:00Z");
+});
+
+test("MetaculusSource normalize new shape skips non-binary and null aggregates", () => {
+  const source = new MetaculusSource();
+  const data = {
+    results: [
+      {
+        id: 1,
+        title: "Numeric question",
+        question: {
+          id: 11,
+          type: "numeric",
+          status: "open",
+          default_aggregation_method: "recency_weighted",
+          aggregations: { recency_weighted: { latest: { centers: [12345.0] } } },
+        },
+      },
+      {
+        id: 2,
+        title: "Binary with null aggregate",
+        question: {
+          id: 22,
+          type: "binary",
+          status: "open",
+          default_aggregation_method: "recency_weighted",
+          aggregations: { recency_weighted: { latest: null } },
+        },
+      },
+      { id: 3, title: "Notebook post (no question)" },
+    ],
+  };
+
+  const result = source.normalize(data);
+  // numeric keeps item but null probability; null-aggregate binary keeps item;
+  // notebook is skipped
+  assert.strictEqual(result.items.length, 2);
+  assert.strictEqual(result.items[0].probability, null);
+  assert.strictEqual(result.items[0].title, "Numeric question");
+  assert.strictEqual(result.items[1].probability, null);
+  assert.strictEqual(result.items[1].id, 22);
+});
+
+test("MetaculusSource extractCommunityPrediction legacy still works", () => {
+  const source = new MetaculusSource();
+  assert.strictEqual(
+    source.extractCommunityPrediction({ community_prediction: { full: { q1: 0.25 } } }),
+    0.25
+  );
+  assert.strictEqual(source.extractCommunityPrediction({}), null);
+  assert.strictEqual(
+    source.extractCommunityPrediction({ community_prediction: { full: { q1: NaN } } }),
+    null
+  );
 });
 
 test("RedditSource normalizePosts extracts post data", () => {
