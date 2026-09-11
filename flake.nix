@@ -17,11 +17,16 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
+          # single source of truth: read the version from package.json so
+          # nix-package labels can never drift from the code version again
+          # (the hardcoded value got stale in #19 and shipped 0.7.4 code
+          # labeled 0.7.3).
+          packageVersion = (pkgs.lib.importJSON ./package.json).version;
         in
         {
           packages.default = pkgs.buildNpmPackage.override { nodejs = pkgs.nodejs_24; } {
             pname = "dude-prediction-markets";
-            version = "0.7.3";
+            version = packageVersion;
             src = ./.;
             dontNpmBuild = true;
             npmDepsHash = "sha256-ImVyp3kCC8WDeBRjziXEaqUvluypsXQwFmIIHWUrRj4=";
