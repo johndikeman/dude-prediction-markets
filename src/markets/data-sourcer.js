@@ -21,7 +21,10 @@ const STOPWORDS = new Set([
 
 /**
  * Score how relevant a market-item text (title/question) is to a query.
- * Score = fraction of meaningful query tokens found in the text.
+ * Score = fraction of meaningful query tokens found in the text as whole words.
+ * Word-boundary matching: substring matching produced false positives like
+ * "ai" inside "maintain" or "bill" inside "billion", pulling unrelated
+ * markets into every strategy.
  * Returns 0 for queries with no meaningful tokens.
  */
 export function relevanceScore(query, text) {
@@ -31,16 +34,21 @@ export function relevanceScore(query, text) {
     .filter((t) => t.length >= 3 && !STOPWORDS.has(t));
   if (tokens.length === 0) return 0;
   const hay = String(text || "").toLowerCase();
-  const matched = tokens.filter((t) => hay.includes(t)).length;
+  const matched = tokens.filter((t) =>
+    new RegExp(`(^|[^a-z0-9])${t}($|[^a-z0-9])`).test(hay)
+  ).length;
   return matched / tokens.length;
 }
 
 /**
  * Filter market items by relevance to a strategy query.
  * Items scoring >= minScore are kept, ordered by (score desc, original order).
- * If nothing passes the threshold, keep the top `fallbackCount` items by score
- * (still relevance-ordered) instead of the untouched feed — an all-or-nothing
- * fallback hands every hard-query strategy the identical generic top feed.
+ * If nothing passes the threshold, keep the top `fallbackCount` items that
+ * still scored above zero (relevance-ordered) instead of the untouched feed —
+ * an all-or-nothing fallback hands every hard-query strategy the identical
+ * generic top feed. Items scoring exactly zero are dropped even in fallback:
+ * an arbitrary slice of unrelated markets pollutes the feed worse than an
+ * empty one, so a strategy goes blind for that cycle instead of getting noise.
  */
 export function filterItemsByRelevance(items, query, minScore = 0.25, fallbackCount = 15) {
   if (!Array.isArray(items) || items.length === 0) return items || [];
@@ -52,7 +60,7 @@ export function filterItemsByRelevance(items, query, minScore = 0.25, fallbackCo
     }))
     .sort((a, b) => b.score - a.score || a.i - b.i);
   const passing = scored.filter((s) => s.score >= minScore);
-  const chosen = passing.length > 0 ? passing : scored.slice(0, fallbackCount);
+  const chosen = passing.length > 0 ? passing : scored.filter((s) => s.score > 0).slice(0, fallbackCount);
   return chosen.map((s) => s.item);
 }
 

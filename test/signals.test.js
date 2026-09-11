@@ -36,7 +36,7 @@ test("filterItemsByRelevance keeps passing items, drops noise", () => {
 });
 
 test("filterItemsByRelevance: keeps top-N scored items when nothing passes", () => {
-  // nothing matches "quantum" at all -> top fallbackCount items by score (original order here)
+  // fallback keeps only items that scored above zero, relevance-ordered
   const items = [
     { title: "LoL Worlds winner" },
     { title: "Quantum computing roadmap" },
@@ -44,7 +44,7 @@ test("filterItemsByRelevance: keeps top-N scored items when nothing passes", () 
   ];
   const out = filterItemsByRelevance(items, "quantum computing breakthroughs", 0.9);
   assert.notStrictEqual(out, items);
-  assert.strictEqual(out.length, 3);
+  assert.strictEqual(out.length, 1);
   assert.strictEqual(out[0].title, "Quantum computing roadmap");
 });
 
@@ -53,11 +53,27 @@ test("filterItemsByRelevance: fallback caps at fallbackCount and preserves score
     title: i === 7 ? "Quantum computing roadmap 2030" : `Sports match ${i}`,
   }));
   const out = filterItemsByRelevance(items, "quantum computing", 0.34, 5);
-  // note: query tokens both appear in item 7 -> score 1.0 passes 0.34, so this
-  // goes through the passing path; craft a zero-pass case instead:
-  const out2 = filterItemsByRelevance(items, "quantum computing breakthroughs", 0.9, 5);
-  assert.strictEqual(out2.length, 5);
-  assert.strictEqual(out2[0].title, "Quantum computing roadmap 2030");
+  assert.strictEqual(out.length, 1);
+  assert.strictEqual(out[0].title, "Quantum computing roadmap 2030");
+});
+
+test("filterItemsByRelevance: empty result when nothing scores above zero", () => {
+  // hard query with zero matches -> empty, not an arbitrary slice of the feed
+  const items = [
+    { title: "49ers vs. Rams" },
+    { title: "Fed Decision in September?" },
+    { title: "What price will Bitcoin hit in September?" },
+  ];
+  const out = filterItemsByRelevance(items, "famine sudan classification threshold", 0.25);
+  assert.deepStrictEqual(out, []);
+});
+
+test("relevanceScore: word-boundary matching avoids substring false positives", () => {
+  // "ai" is not inside "maintain", "bill" is not inside "billion"
+  assert.strictEqual(relevanceScore("ai bill", "Maintain a billion dollar fund"), 0);
+  assert.strictEqual(relevanceScore("ai bill", "AI kill-switch bill passes"), 1);
+  // partial-word plurals/adjacent punctuation still match
+  assert.strictEqual(relevanceScore("fed", "the FED's decision"), 1);
 });
 
 test("filterItemsByRelevance: handles empty input", () => {
