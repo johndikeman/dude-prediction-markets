@@ -143,7 +143,18 @@ test("MetaculusSource normalize extracts questions", () => {
   assert.strictEqual(result.items[0].numForecasters, 800);
 });
 
-test("MetaculusSource normalize handles missing community_prediction", () => {
+test("MetaculusSource buildUrl uses /api/posts by default (search-aware)", () => {
+  const source = new MetaculusSource();
+  // /api/posts/ honors `search`; the api2 shim ignores it (returned the same
+  // -activity feed for every strategy query)
+  assert.strictEqual(source.buildUrl(), "https://www.metaculus.com/api/posts/");
+
+  // legacy api2 baseUrl keeps the /questions/ path
+  const legacy = new MetaculusSource({ baseUrl: "https://www.metaculus.com/api2" });
+  assert.strictEqual(legacy.buildUrl(), "https://www.metaculus.com/api2/questions/");
+});
+
+ test("MetaculusSource normalize handles missing community_prediction", () => {
   const source = new MetaculusSource();
   const data = {
     results: [
