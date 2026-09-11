@@ -1,8 +1,13 @@
 /**
- * Metaculus data source
- * Fetches forecasting questions from Metaculus api2 — which is now a shim
- * over the newer /api/posts/ response shape (see issue #16). API token
- * required for all read access (403 otherwise).
+ * Metaculus data source.
+ *
+ * The api2 shim ignores the `search` param entirely (returns the same
+ * -activity feed regardless of query) — per-strategy search results were
+ * therefore identical for every strategy. /api/posts/ honors `search`, so
+ * this source now queries it for the list endpoint. The /api/posts/ response
+ * shape is the new one (post objects with a nested `question`); the parser
+ * handles both shapes (see issue #16). API token required for all read
+ * access (403 otherwise).
  */
 
 import { fetch } from "undici";
@@ -10,7 +15,7 @@ import { fetch } from "undici";
 export class MetaculusSource {
   constructor(options = {}) {
     this.name = "metaculus";
-    this.baseUrl = options.baseUrl || "https://www.metaculus.com/api2";
+    this.baseUrl = options.baseUrl || "https://www.metaculus.com/api/posts";
     this.apiKey = options.apiKey || null;
   }
 
@@ -26,6 +31,13 @@ export class MetaculusSource {
     return headers;
   }
 
+  buildUrl() {
+    // /api/posts/ honors `search`; the api2 shim silently ignores it. legacy
+    // callers that still pass an api2 baseUrl keep the /questions/ path.
+    const path = this.baseUrl.endsWith("/api2") ? "questions/" : "";
+    return `${this.baseUrl}/${path}`;
+  }
+
   async fetchQuestions(limit = 20, status = "open", search = "") {
     try {
       const params = new URLSearchParams({
@@ -38,7 +50,7 @@ export class MetaculusSource {
       }
 
       // trailing slash required — without it the api 301s and can drop auth
-      const url = `${this.baseUrl}/questions/?${params.toString()}`;
+      const url = `${this.buildUrl()}?${params.toString()}`;
       const response = await fetch(url, {
         signal: AbortSignal.timeout(15000),
         headers: this.buildHeaders(),
