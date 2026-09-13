@@ -114,6 +114,12 @@ export class MetaculusSource {
       // and are kept.
       if (q.community_prediction === undefined && !q.question) continue;
 
+      // resolved/closed questions are useless for signal detection — the api
+      // occasionally leaks them even when we request status=open (e.g. when a
+      // search term only matches stale questions). drop them defensively.
+      const qStatus = (q.question?.status || q.status || "").toLowerCase();
+      if (qStatus === "resolved" || qStatus === "closed") continue;
+
       const inner = q.question || {};
       const raw = this.extractCommunityPrediction(q);
       const communityPrediction = raw !== null ? Math.round(raw * 100) / 100 : null;
