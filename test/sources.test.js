@@ -213,6 +213,47 @@ test("MetaculusSource normalize parses new api shape with binary aggregate", () 
   assert.strictEqual(item.resolutionDate, "2026-09-17T18:00:00Z");
 });
 
+test("MetaculusSource normalize drops resolved/closed questions defensively", () => {
+  const source = new MetaculusSource();
+  const data = {
+    results: [
+      {
+        id: 1,
+        title: "Open question",
+        question: {
+          id: 11,
+          type: "binary",
+          status: "open",
+          aggregations: { recency_weighted: { latest: { centers: [0.6] } } },
+        },
+      },
+      {
+        // resolved status on the outer post object (api2 shape)
+        id: 2,
+        title: "Stale resolved question",
+        status: "resolved",
+        community_prediction: { full: { q1: 0.9 } },
+        question: { id: 12, type: "binary", status: "resolved" },
+      },
+      {
+        // closed status on the inner question (api/posts shape)
+        id: 3,
+        title: "Closed question",
+        question: {
+          id: 13,
+          type: "binary",
+          status: "closed",
+          aggregations: { recency_weighted: { latest: { centers: [0.5] } } },
+        },
+      },
+    ],
+  };
+
+  const result = source.normalize(data);
+  assert.strictEqual(result.items.length, 1);
+  assert.strictEqual(result.items[0].title, "Open question");
+});
+
 test("MetaculusSource normalize new shape skips non-binary and null aggregates", () => {
   const source = new MetaculusSource();
   const data = {
