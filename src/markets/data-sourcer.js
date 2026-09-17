@@ -166,7 +166,6 @@ export class DataSourcer {
 
   async fetchMarkets(options = {}) {
     const limit = options.limit || 20;
-    const tag = options.tag || null;
     // relevance filtering: pass the strategy query through to each source.
     // metaculus supports server-side search; polymarket/manifold are filtered
     // locally since their public apis don't support text search on this
@@ -175,12 +174,13 @@ export class DataSourcer {
     const search = options.search || "";
     const results = [];
 
-    // Polymarket active markets — fetch a larger pool then filter locally
+    // Polymarket active markets — fetch a larger pool then filter locally.
+    // options.tag narrows the pool server-side (polymarket tag_id).
     if (this.sources.has("polymarket")) {
       const pm = this.sources.get("polymarket");
       const pool = limit * 4;
       const raw = await this.guardedFetch("polymarket", () =>
-        pm.fetchActiveMarkets(pool, tag)
+        pm.fetchActiveMarkets(pool, options.tag || null)
       );
       results.push(
         raw.error
@@ -216,7 +216,10 @@ export class DataSourcer {
   async fetchAll(query, options = {}) {
     const [news, markets] = await Promise.all([
       this.fetchNews(query, options),
-      // the strategy query drives market relevance filtering / search too
+      // the strategy query drives market relevance filtering / search too.
+      // marketTag (e.g. a polymarket tag_id) narrows the polymarket pool
+      // server-side — needed for topics the volume-ordered top feed never
+      // contains (e.g. tech-ai vs the top-100-by-volume events).
       this.fetchMarkets({ ...options, search: options.search || query }),
     ]);
 

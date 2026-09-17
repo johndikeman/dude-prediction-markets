@@ -50,6 +50,8 @@ export class PolymarketSource {
   constructor(options = {}) {
     this.name = "polymarket";
     this.baseUrl = options.baseUrl || "https://gamma-api.polymarket.com";
+    // injectable for tests
+    this._fetch = options.fetch || fetch;
   }
 
   async fetchActiveMarkets(limit = 20, tag = null) {
@@ -57,10 +59,16 @@ export class PolymarketSource {
       // note: the /events endpoint ignores a "sort" param; use order+ascending
       let url = `${this.baseUrl}/events?closed=false&limit=${limit}&order=volume24hr&ascending=false`;
       if (tag) {
-        url += `&tag=${encodeURIComponent(tag)}`;
+        // the plain `tag` slug param is silently ignored by gamma-api; only
+        // `tag_id` (numeric tag id, resolvable via /tags/slug/<slug>) filters.
+        // callers pass a slug or numeric id — numeric goes through as tag_id,
+        // slugs are kept for logging only since the api drops them.
+        url += /^\d+$/.test(String(tag))
+          ? `&tag_id=${encodeURIComponent(tag)}`
+          : `&tag=${encodeURIComponent(tag)}`;
       }
 
-      const response = await fetch(url, {
+      const response = await this._fetch(url, {
         headers: {
           "User-Agent": "dude-prediction-markets/0.1.0",
           "Accept": "application/json",
