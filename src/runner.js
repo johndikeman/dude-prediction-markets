@@ -37,7 +37,13 @@ async function runCycle(engine, reporter) {
     let data;
     let signals = [];
     try {
-      data = await sourcer.fetchAll(strategy.query, { limit: 15 });
+      // marketTag: optional per-strategy polymarket tag_id — narrows the
+      // polymarket pool server-side for topics the volume-ordered top feed
+      // never contains (e.g. tech-ai's AI/AGI markets).
+      data = await sourcer.fetchAll(strategy.query, {
+        limit: 15,
+        tag: strategy.marketTag || null,
+      });
     } catch (err) {
       signals.push({ type: "error", message: err.message });
       data = {
