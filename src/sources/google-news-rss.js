@@ -11,11 +11,16 @@ export class GoogleNewsRssSource {
     this.name = "google-news-rss";
     this.language = options.language || "en";
     this.country = options.country || "US";
+    // Google News RSS ranks by relevance, not date. For niche queries it
+    // happily returns year-old articles, which poisoned downstream research
+    // passes (stale macro/sports headlines read as fresh news). Restrict the
+    // search to a recent window; results may be fewer but actually fresh.
+    this.when = options.when || "30d";
   }
 
   async fetchByQuery(query, limit = 20) {
     try {
-      const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=${this.language}&gl=${this.country}&ceid=${this.country}:${this.language}`;
+      const url = `https://news.google.com/rss/search?q=${encodeURIComponent(`${query} when:${this.when}`)}&hl=${this.language}&gl=${this.country}&ceid=${this.country}:${this.language}`;
       const response = await fetch(url, {
         headers: {
           "User-Agent": "Mozilla/5.0 (compatible; dude-prediction-markets/0.1.0)",
