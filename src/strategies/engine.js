@@ -3,14 +3,92 @@
  * maintenance, and tracking of prediction-market research strategies.
  */
 
-import { readFile, writeFile, mkdir, access } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm, stat, access } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_STRATEGIES } from "./registry.js";
 
 const STATE_FILE = "strategies.json";
 const HISTORY_FILE = "snapshots.jsonl";
 
+/**
+ * Find the extent of the top-level JSON object starting at raw[start].
+ * Returns index one past the closing brace, or null if truncated.
+ * String-aware (braces inside string literals don't count).
+ */
+function scanObjectEnd(raw, start) {
+  if (raw[start] !== "{") return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < raw.length; i++) {
+    const c = raw[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) return i + 1;
+    }
+  }
+  return null;
+}
+
+/**
+ * JSON-aware scanner for snapshots.jsonl.
+ *
+ * Recovers entries even when the file was corrupted by interleaved writers
+ * — a snapshot written without its trailing newline gets the next entry
+ * concatenated onto it (observed 2026-11-06, snapshots.jsonl line 1235).
+ * A plain split("\\n") mangles such files; this scans for object extents.
+ *
+ * Returns { entries, corruptedLines, truncatedTail }.
+ */
+export function parseHistoryBuffer(raw) {
+  const entries = [];
+  let corruptedLines = 0;
+  let truncatedTail = false;
+  let i = 0;
+  let currentLineHasEntry = false;
+  while (i < raw.length) {
+    const c = raw[i];
+    if (c === "\n" || c === "\r") {
+      currentLineHasEntry = false;
+      i++;
+      continue;
+    }
+    if (c === " " || c === "\t") {
+      i++;
+      continue;
+    }
+    const end = scanObjectEnd(raw, i);
+    if (end === null) {
+      truncatedTail = true;
+      break;
+    }
+    try {
+      entries.push(JSON.parse(raw.slice(i, end)));
+    } catch {
+      truncatedTail = true;
+      break;
+    }
+    if (currentLineHasEntry) corruptedLines++;
+    currentLineHasEntry = true;
+    i = end;
+  }
+  return { entries, corruptedLines, truncatedTail };
+}
+
 export class StrategyEngine {
+  // lock-directory is considered abandoned after this long without touch
+  LOCK_STALE_MS = 10 * 60 * 1000;
+  // how long withHistoryLock waits for a competing process before throwing
+  LOCK_MAX_WAIT_MS = 60 * 1000;
+
   constructor(stateDir = "./state") {
     this.stateDir = stateDir;
     this.stateFile = join(stateDir, STATE_FILE);
@@ -141,7 +219,85 @@ export class StrategyEngine {
     }
 
     const line = JSON.stringify(lineObj) + "\n";
-    await writeFile(this.historyFile, line, { flag: "a" });
+    await this.withHistoryLock(async () => {
+      await this.repairHistoryFileIfCorrupt();
+      await writeFile(this.historyFile, line, { flag: "a" });
+    });
+  }
+
+  /**
+   * Serialize history-file appends across concurrent in-process calls
+   * and across overlapping processes (scheduled runs, hung sessions).
+   *
+   * Cross-process safety uses an exclusive lock directory with stale-
+   * takeover after LOCK_STALE_MS (a crashed process leaks the lock dir;
+   * without it a deadlock would stall every future snapshot).
+   */
+  async withHistoryLock(fn) {
+    const run = async () => {
+      const lockDir = this.historyFile + ".lock";
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await mkdir(lockDir);
+          break;
+        } catch (err) {
+          if (err.code !== "EEXIST") throw err;
+          try {
+            const st = await stat(lockDir);
+            if (Date.now() - st.mtimeMs > this.LOCK_STALE_MS) {
+              await rm(lockDir, { recursive: true, force: true });
+              continue;
+            }
+          } catch {
+            continue; // vanished between mkdir and stat
+          }
+          if (attempt > this.LOCK_MAX_WAIT_MS / 250) {
+            throw new Error(`history lock timeout: ${lockDir}`);
+          }
+          await new Promise((r) => setTimeout(r, 250));
+        }
+      }
+      try {
+        return await fn();
+      } finally {
+        await rm(lockDir, { recursive: true, force: true });
+      }
+    };
+    const result = (this._historyWriteQueue || Promise.resolve()).then(run, run);
+    this._historyWriteQueue = result.catch(() => {});
+    return result;
+  }
+
+  /**
+   * Detect and fix snapshots.jsonl corruption: entries missing their
+   * trailing newline (interleaved/partial writer) or a truncated tail.
+   * Rewrites the file canonical (one object per line, all terminated)
+   * with a timestamped backup kept alongside. No-op on a healthy file.
+   */
+  async repairHistoryFileIfCorrupt() {
+    let raw;
+    try {
+      raw = await readFile(this.historyFile, "utf-8");
+    } catch (err) {
+      if (err.code === "ENOENT") return null;
+      throw err;
+    }
+    if (raw.length === 0) return null;
+
+    const { entries, corruptedLines, truncatedTail } = parseHistoryBuffer(raw);
+    const needsRewrite =
+      corruptedLines > 0 || truncatedTail || !raw.endsWith("\n");
+    if (!needsRewrite) return null;
+
+    const report = { corruptedLines, truncatedTail, recovered: entries.length };
+    const backupPath = `${this.historyFile}.corrupt-${Date.now()}.bak`;
+    await writeFile(backupPath, raw);
+    await writeFile(
+      this.historyFile,
+      entries.map((e) => JSON.stringify(e) + "\n").join(""),
+    );
+    report.backupPath = backupPath;
+    return report;
   }
 
   /**
@@ -156,17 +312,9 @@ export class StrategyEngine {
       if (err.code === "ENOENT") return null;
       throw err;
     }
-    const lines = raw.split("\n").reverse();
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const obj = JSON.parse(line);
-        if (obj.strategyId === strategyId) return obj;
-      } catch {
-        // skip malformed/truncated tail line
-      }
-    }
-    return null;
+    const lines = parseHistoryBuffer(raw).entries
+      .filter((obj) => obj.strategyId === strategyId);
+    return lines.length > 0 ? lines[lines.length - 1] : null;
   }
 
   /**
